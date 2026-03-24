@@ -1,0 +1,5 @@
+{
+  "mode": "all",
+  "requested": [],
+  "resolved": ["jest", "playwright", "k6", "trivy"]
+}

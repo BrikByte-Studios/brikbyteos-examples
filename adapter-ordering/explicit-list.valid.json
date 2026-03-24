@@ -1,0 +1,5 @@
+{
+  "mode": "explicit_list",
+  "requested": ["trivy", "jest"],
+  "resolved": ["jest", "trivy"]
+}
