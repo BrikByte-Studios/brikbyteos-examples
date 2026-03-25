@@ -1,0 +1,50 @@
+[
+  {
+    "name": "jest",
+    "type": "unit",
+    "description": "JavaScript and TypeScript unit test adapter",
+    "order": 10,
+    "supported_tool": "jest",
+    "version_command": ["npx", "jest", "--version"],
+    "default_timeout_ms": 30000,
+    "supported_file_globs": ["**/*.test.js", "**/*.spec.js", "**/*.test.ts", "**/*.spec.ts"],
+    "aliases": ["js-test"],
+    "capabilities": ["unit-test"]
+  },
+  {
+    "name": "playwright",
+    "type": "ui",
+    "description": "Browser UI and end-to-end testing adapter",
+    "order": 20,
+    "supported_tool": "playwright",
+    "version_command": ["npx", "playwright", "--version"],
+    "default_timeout_ms": 60000,
+    "supported_file_globs": ["**/*.spec.ts", "**/*.e2e.ts"],
+    "aliases": ["pw"],
+    "capabilities": ["ui-test", "e2e"]
+  },
+  {
+    "name": "k6",
+    "type": "performance",
+    "description": "Performance and load testing adapter",
+    "order": 30,
+    "supported_tool": "k6",
+    "version_command": ["k6", "version"],
+    "default_timeout_ms": 120000,
+    "supported_file_globs": ["**/*.k6.js"],
+    "aliases": [],
+    "capabilities": ["performance"]
+  },
+  {
+    "name": "trivy",
+    "type": "security",
+    "description": "Security vulnerability and configuration scanning adapter",
+    "order": 40,
+    "supported_tool": "trivy",
+    "version_command": ["trivy", "--version"],
+    "default_timeout_ms": 120000,
+    "supported_file_globs": ["Dockerfile", "**/*.lock"],
+    "aliases": [],
+    "capabilities": ["security-scan"]
+  }
+]
