@@ -1,0 +1,11 @@
+Input:
+  mode: explicit_list
+  requested: [trivy, js-test, jest]
+
+Registered:
+  jest (order=10, aliases=[js-test])
+  trivy (order=40)
+
+Resolved:
+  jest
+  trivy
