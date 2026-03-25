@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1",
+  "adapter": {
+    "name": "mock",
+    "type": "other",
+    "version": "0.0.1"
+  },
+  "execution": {
+    "status": "timed_out",
+    "duration_ms": 2000
+  },
+  "summary": {
+    "status": "unknown",
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "evidence": {
+    "complete": false,
+    "issues": [
+      {
+        "code": "EXECUTION_TIMED_OUT",
+        "message": "adapter execution timed out"
+      }
+    ]
+  },
+  "artifacts": {
+    "raw_stdout_path": "raw/mock/stdout.log",
+    "raw_stderr_path": "raw/mock/stderr.log",
+    "raw_tool_output_path": "raw/mock/tool-output.json"
+  },
+  "extensions": {
+    "adapter_specific": {}
+  }
+}

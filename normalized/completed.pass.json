@@ -1,0 +1,35 @@
+{
+  "schema_version": "0.1",
+  "adapter": {
+    "name": "mock",
+    "type": "other",
+    "version": "0.0.1"
+  },
+  "execution": {
+    "status": "completed",
+    "duration_ms": 2000
+  },
+  "summary": {
+    "status": "pass",
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "evidence": {
+    "complete": true,
+    "issues": []
+  },
+  "artifacts": {
+    "raw_stdout_path": "raw/mock/stdout.log",
+    "raw_stderr_path": "raw/mock/stderr.log",
+    "raw_tool_output_path": "raw/mock/tool-output.json"
+  },
+  "extensions": {
+    "adapter_specific": {
+      "mock": {
+        "mode": "success"
+      }
+    }
+  }
+}
