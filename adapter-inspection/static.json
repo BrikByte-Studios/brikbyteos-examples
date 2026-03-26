@@ -1,0 +1,46 @@
+[
+  {
+    "name": "jest",
+    "type": "other",
+    "description": "unit test runner",
+    "order": 10,
+    "supported_tool": "jest",
+    "version_command": ["jest", "--version"],
+    "default_timeout_ms": 1000,
+    "aliases": ["js-test"],
+    "is_available": false
+  },
+  {
+    "name": "playwright",
+    "type": "other",
+    "description": "ui test runner",
+    "order": 20,
+    "supported_tool": "playwright",
+    "version_command": ["playwright", "--version"],
+    "default_timeout_ms": 1000,
+    "aliases": [],
+    "is_available": false
+  },
+  {
+    "name": "k6",
+    "type": "other",
+    "description": "performance tool",
+    "order": 30,
+    "supported_tool": "k6",
+    "version_command": ["k6", "--version"],
+    "default_timeout_ms": 1000,
+    "aliases": [],
+    "is_available": false
+  },
+  {
+    "name": "trivy",
+    "type": "other",
+    "description": "security scanner",
+    "order": 40,
+    "supported_tool": "trivy",
+    "version_command": ["trivy", "--version"],
+    "default_timeout_ms": 1000,
+    "aliases": [],
+    "is_available": false
+  }
+]
