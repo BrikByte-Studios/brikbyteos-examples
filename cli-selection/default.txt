@@ -1,8 +1,0 @@
-Command:
-  bb run
-
-Resolved adapters:
-  jest
-  playwright
-  k6
-  trivy

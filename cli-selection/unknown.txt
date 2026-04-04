@@ -1,5 +1,0 @@
-Command:
-  bb run --adapter unknown-tool
-
-Error:
-  unknown adapter "unknown-tool" (available: jest, playwright, k6, trivy)

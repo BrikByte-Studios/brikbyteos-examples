@@ -1,6 +1,0 @@
-Command:
-  bb run --adapter trivy --adapter js-test
-
-Resolved adapters:
-  jest
-  trivy

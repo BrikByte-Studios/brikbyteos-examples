@@ -1,6 +1,0 @@
-Command:
-  bb run --adapter trivy --adapter jest
-
-Resolved adapters:
-  jest
-  trivy
