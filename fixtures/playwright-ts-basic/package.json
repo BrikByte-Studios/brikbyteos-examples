@@ -1,0 +1,11 @@
+{
+  "name": "playwright-ts-basic",
+  "private": true,
+  "scripts": {
+    "test": "playwright test --reporter=json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "typescript": "^5.4.0"
+  }
+}
