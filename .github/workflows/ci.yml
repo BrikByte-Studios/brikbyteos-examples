@@ -1,4 +1,4 @@
-name: Examples CI
+name: Examples CI.
 
 on:
   push:
@@ -28,16 +28,15 @@ jobs:
   verify:
     name: Verify • ${{ matrix.os }} • ${{ matrix.fixture }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        fixture: [jest-basic, jest-ts-basic]
+        fixture: [jest-basic, jest-ts-basic, playwright-basic]
 
     steps:
-      # --- Checkout ---
       - name: Checkout examples
         uses: actions/checkout@v6
 
@@ -48,7 +47,6 @@ jobs:
           ref: ${{ env.CLI_REF }}
           path: brikbyteos-cli
 
-      # --- Setup Go ---
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -56,7 +54,6 @@ jobs:
           cache: true
           cache-dependency-path: brikbyteos-cli/go.sum
 
-      # --- Setup Node ---
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -64,79 +61,124 @@ jobs:
           cache: npm
           cache-dependency-path: fixtures/${{ matrix.fixture }}/package-lock.json
 
-      # --- Toolchain visibility ---
       - name: Show toolchain
+        shell: bash
         run: |
+          set -euo pipefail
           go version
           node --version
           npm --version
 
-      # --- Build CLI ---
       - name: Build bb
         working-directory: brikbyteos-cli
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p bin
           go build -trimpath -o bin/bb ./cmd/bb
 
-      # --- Install dependencies ---
+      - name: Resolve fixture adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.fixture }}" in
+            playwright-basic)
+              echo "FIXTURE_ADAPTER=playwright" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "FIXTURE_ADAPTER=jest" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Set bb path
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BB_CLI=$GITHUB_WORKSPACE/brikbyteos-cli/bin/bb" >> "$GITHUB_ENV"
+
       - name: Install deps
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
+          set -euo pipefail
           if [ -f package-lock.json ]; then
             npm ci
           else
             npm install
           fi
 
-      # --- Ensure Jest is resolvable ---
       - name: Ensure Jest binary
+        if: matrix.fixture == 'jest-basic' || matrix.fixture == 'jest-ts-basic'
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
+          set -euo pipefail
           ls -la node_modules/.bin
           test -f node_modules/.bin/jest || test -f node_modules/.bin/jest.cmd
 
-      # --- Add local bin to PATH ---
-      - name: Add node_modules bin to PATH
+      - name: Ensure Playwright binary
+        if: matrix.fixture == 'playwright-basic'
         working-directory: fixtures/${{ matrix.fixture }}
-        run: echo "$PWD/node_modules/.bin" >> $GITHUB_PATH
-
-      # --- Baseline Jest ---
-      - name: Baseline Jest
-        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
-          npm test -- --json --outputFile baseline.json
-          cat baseline.json
+          set -euo pipefail
+          ls -la node_modules/.bin
+          test -f node_modules/.bin/playwright || test -f node_modules/.bin/playwright.cmd
 
+      - name: Install Playwright browsers
+        if: matrix.fixture == 'playwright-basic'
+        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright install chromium
+
+      - name: Add local bin to PATH
+        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Baseline fixture
+        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test > baseline.out 2>&1 || (cat baseline.out && exit 1)
+          cat baseline.out
 
       - name: Run bb pass 1
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           echo "PWD=$PWD"
           ls -la
-          ls -la ../../brikbyteos-cli/bin || true
-          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out1.json
+          ls -la "$GITHUB_WORKSPACE/brikbyteos-cli/bin" || true
+          "$BB_CLI" run --adapter "$FIXTURE_ADAPTER" --workdir . --json > out1.json
+          test -s out1.json
           echo "--- out1.json ---"
-          cat out1.json || true
+          cat out1.json
 
       - name: Run bb pass 2
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           echo "PWD=$PWD"
           ls -la
-          ls -la ../../brikbyteos-cli/bin || true
-          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out2.json
+          ls -la "$GITHUB_WORKSPACE/brikbyteos-cli/bin" || true
+          "$BB_CLI" run --adapter "$FIXTURE_ADAPTER" --workdir . --json > out2.json
+          test -s out2.json
           echo "--- out2.json ---"
-          cat out2.json || true
+          cat out2.json
 
-      # --- Validate results ---
       - name: Validate outputs
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
+        env:
+          FIXTURE_ADAPTER: ${{ env.FIXTURE_ADAPTER }}
         run: |
           set -uo pipefail
 
@@ -194,6 +236,8 @@ jobs:
             }
           }
 
+          const expectedAdapter = process.env.FIXTURE_ADAPTER;
+
           assert(a.command === 'run', 'invalid command');
           assert(a.status === 'ok', 'status not ok');
 
@@ -202,8 +246,8 @@ jobs:
           assert(results.length === 1, 'expected exactly one result');
 
           const r = results[0];
-          assert(r.adapter_name === 'jest', 'wrong adapter');
-          assert(r.raw_status === 'succeeded', 'jest did not succeed');
+          assert(r.adapter_name === expectedAdapter, 'wrong adapter');
+          assert(r.raw_status === 'succeeded', expectedAdapter + ' did not succeed');
           assert(r.normalized_present === true, 'normalized missing');
           assert(r.normalization_failed === false, 'normalization failed');
 
@@ -213,14 +257,13 @@ jobs:
           }
           "
 
-      # --- Upload artifacts ---
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: artifacts-${{ matrix.os }}-${{ matrix.fixture }}
           path: |
-            fixtures/${{ matrix.fixture }}/baseline.json
+            fixtures/${{ matrix.fixture }}/baseline.out
             fixtures/${{ matrix.fixture }}/out1.json
             fixtures/${{ matrix.fixture }}/out2.json
           retention-days: 14
