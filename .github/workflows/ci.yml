@@ -108,29 +108,65 @@ jobs:
           npm test -- --json --outputFile baseline.json
           cat baseline.json
 
-      # --- Run bb (1) ---
+
       - name: Run bb pass 1
         working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
+          set -uo pipefail
+          echo "PWD=$PWD"
+          ls -la
+          ls -la ../../brikbyteos-cli/bin || true
           ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out1.json
-          cat out1.json
+          echo "--- out1.json ---"
+          cat out1.json || true
 
-      # --- Run bb (2) ---
       - name: Run bb pass 2
         working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
+          set -uo pipefail
+          echo "PWD=$PWD"
+          ls -la
+          ls -la ../../brikbyteos-cli/bin || true
           ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out2.json
-          cat out2.json
+          echo "--- out2.json ---"
+          cat out2.json || true
 
       # --- Validate results ---
       - name: Validate outputs
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
-          test -s out1.json
-          test -s out2.json
+          echo "PWD=$PWD"
+          ls -la
+
+          if [ ! -f out1.json ]; then
+            echo "out1.json does not exist"
+            exit 1
+          fi
+
+          if [ ! -f out2.json ]; then
+            echo "out2.json does not exist"
+            exit 1
+          fi
+
+          echo "--- out1.json ---"
+          cat out1.json || true
+          echo "--- out2.json ---"
+          cat out2.json || true
+
+          if [ ! -s out1.json ]; then
+            echo "out1.json exists but is empty"
+            exit 1
+          fi
+
+          if [ ! -s out2.json ]; then
+            echo "out2.json exists but is empty"
+            exit 1
+          fi
 
           node -e "
           const fs = require('fs');
@@ -139,12 +175,12 @@ jobs:
           const raw2 = fs.readFileSync('out2.json', 'utf8').trim();
 
           if (!raw1) {
-            console.error('out1.json is empty');
+            console.error('out1.json is empty after trim');
             process.exit(1);
           }
 
           if (!raw2) {
-            console.error('out2.json is empty');
+            console.error('out2.json is empty after trim');
             process.exit(1);
           }
 
