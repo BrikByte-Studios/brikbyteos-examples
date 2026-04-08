@@ -41,7 +41,7 @@ jobs:
         shell: bash
 
     steps:
-      - name: Checkout brikbyteos-examples
+      - name: Checkout brikbyteos-examples.
         uses: actions/checkout@v6
 
       - name: Checkout brikbyteos-cli
