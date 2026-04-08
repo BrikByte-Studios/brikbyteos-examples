@@ -80,6 +80,7 @@ jobs:
       # --- Install dependencies ---
       - name: Install deps
         working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
           if [ -f package-lock.json ]; then
             npm ci
