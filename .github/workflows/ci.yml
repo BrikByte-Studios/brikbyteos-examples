@@ -125,12 +125,31 @@ jobs:
       # --- Validate results ---
       - name: Validate outputs
         working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
+          set -euo pipefail
+
+          test -s out1.json
+          test -s out2.json
+
           node -e "
           const fs = require('fs');
 
-          const a = JSON.parse(fs.readFileSync('out1.json'));
-          const b = JSON.parse(fs.readFileSync('out2.json'));
+          const raw1 = fs.readFileSync('out1.json', 'utf8').trim();
+          const raw2 = fs.readFileSync('out2.json', 'utf8').trim();
+
+          if (!raw1) {
+            console.error('out1.json is empty');
+            process.exit(1);
+          }
+
+          if (!raw2) {
+            console.error('out2.json is empty');
+            process.exit(1);
+          }
+
+          const a = JSON.parse(raw1);
+          const b = JSON.parse(raw2);
 
           function assert(cond, msg) {
             if (!cond) {
@@ -139,18 +158,19 @@ jobs:
             }
           }
 
-          // basic checks
           assert(a.command === 'run', 'invalid command');
           assert(a.status === 'ok', 'status not ok');
 
-          const r = a.data.results[0];
+          const results = a.data && a.data.results;
+          assert(Array.isArray(results), 'results missing');
+          assert(results.length === 1, 'expected exactly one result');
 
+          const r = results[0];
           assert(r.adapter_name === 'jest', 'wrong adapter');
           assert(r.raw_status === 'succeeded', 'jest did not succeed');
           assert(r.normalized_present === true, 'normalized missing');
           assert(r.normalization_failed === false, 'normalization failed');
 
-          // determinism check
           if (JSON.stringify(a) !== JSON.stringify(b)) {
             console.error('non-deterministic output');
             process.exit(1);
