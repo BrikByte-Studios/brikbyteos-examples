@@ -91,6 +91,7 @@ jobs:
       # --- Ensure Jest is resolvable ---
       - name: Ensure Jest binary
         working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
         run: |
           ls -la node_modules/.bin
           test -f node_modules/.bin/jest || test -f node_modules/.bin/jest.cmd
