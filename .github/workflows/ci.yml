@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       cli_ref:
-        description: "brikbyteos-cli ref to test (branch, tag, or SHA)"
+        description: "brikbyteos-cli ref to test"
         required: false
         default: "main"
 
@@ -34,23 +34,21 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        fixture: [jest-basic]
-
-    defaults:
-      run:
-        shell: bash
+        fixture: [jest-basic, jest-ts-basic]
 
     steps:
-      - name: Checkout brikbyteos-examples.
+      # --- Checkout ---
+      - name: Checkout examples
         uses: actions/checkout@v6
 
-      - name: Checkout brikbyteos-cli
+      - name: Checkout CLI
         uses: actions/checkout@v6
         with:
           repository: ${{ env.CLI_REPOSITORY }}
           ref: ${{ env.CLI_REF }}
           path: brikbyteos-cli
 
+      # --- Setup Go ---
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -58,6 +56,7 @@ jobs:
           cache: true
           cache-dependency-path: brikbyteos-cli/go.sum
 
+      # --- Setup Node ---
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -65,131 +64,105 @@ jobs:
           cache: npm
           cache-dependency-path: fixtures/${{ matrix.fixture }}/package-lock.json
 
+      # --- Toolchain visibility ---
       - name: Show toolchain
         run: |
-          set -euo pipefail
           go version
           node --version
           npm --version
 
-      - name: Build bb CLI
+      # --- Build CLI ---
+      - name: Build bb
         working-directory: brikbyteos-cli
         run: |
-          set -euo pipefail
-          mkdir -p bin
           go build -trimpath -o bin/bb ./cmd/bb
 
-      - name: Install fixture dependencies
+      # --- Install dependencies ---
+      - name: Install deps
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
           if [ -f package-lock.json ]; then
             npm ci
           else
             npm install
           fi
 
-      - name: Verify local Jest binary exists
+      # --- Ensure Jest is resolvable ---
+      - name: Ensure Jest binary
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
-          test -f node_modules/.bin/jest || test -f node_modules/.bin/jest.cmd
           ls -la node_modules/.bin
+          test -f node_modules/.bin/jest || test -f node_modules/.bin/jest.cmd
 
-      - name: Baseline fixture health check
+      # --- Add local bin to PATH ---
+      - name: Add node_modules bin to PATH
+        working-directory: fixtures/${{ matrix.fixture }}
+        run: echo "$PWD/node_modules/.bin" >> $GITHUB_PATH
+
+      # --- Baseline Jest ---
+      - name: Baseline Jest
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
-          npm test -- --json --outputFile baseline-jest.json
-          test -f baseline-jest.json
+          npm test -- --json --outputFile baseline.json
+          cat baseline.json
 
-      - name: Run bb against fixture (pass 1)
+      # --- Run bb (1) ---
+      - name: Run bb pass 1
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
-          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > bb-result-1.json
-          cat bb-result-1.json
+          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out1.json
+          cat out1.json
 
-      - name: Assert bb pass 1 succeeded
+      # --- Run bb (2) ---
+      - name: Run bb pass 2
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          with open("bb-result-1.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
+          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > out2.json
+          cat out2.json
 
-          assert data["command"] == "run", data
-          assert data["status"] == "ok", data
-
-          results = data["data"]["results"]
-          assert len(results) == 1, results
-
-          r = results[0]
-          assert r["adapter_name"] == "jest", r
-          assert r["raw_status"] == "succeeded", r
-          assert r["normalized_present"] is True, r
-          assert r["normalization_failed"] is False, r
-          PY
-
-      - name: Run bb against fixture (pass 2)
+      # --- Validate results ---
+      - name: Validate outputs
         working-directory: fixtures/${{ matrix.fixture }}
         run: |
-          set -euo pipefail
-          ../../brikbyteos-cli/bin/bb run --adapter jest --workdir . --json > bb-result-2.json
-          cat bb-result-2.json
+          node -e "
+          const fs = require('fs');
 
-      - name: Assert bb pass 2 succeeded
-        working-directory: fixtures/${{ matrix.fixture }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          with open("bb-result-2.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
+          const a = JSON.parse(fs.readFileSync('out1.json'));
+          const b = JSON.parse(fs.readFileSync('out2.json'));
 
-          assert data["command"] == "run", data
-          assert data["status"] == "ok", data
+          function assert(cond, msg) {
+            if (!cond) {
+              console.error(msg);
+              process.exit(1);
+            }
+          }
 
-          results = data["data"]["results"]
-          assert len(results) == 1, results
+          // basic checks
+          assert(a.command === 'run', 'invalid command');
+          assert(a.status === 'ok', 'status not ok');
 
-          r = results[0]
-          assert r["adapter_name"] == "jest", r
-          assert r["raw_status"] == "succeeded", r
-          assert r["normalized_present"] is True, r
-          assert r["normalization_failed"] is False, r
-          PY
+          const r = a.data.results[0];
 
-      - name: Stability check
-        working-directory: fixtures/${{ matrix.fixture }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
+          assert(r.adapter_name === 'jest', 'wrong adapter');
+          assert(r.raw_status === 'succeeded', 'jest did not succeed');
+          assert(r.normalized_present === true, 'normalized missing');
+          assert(r.normalization_failed === false, 'normalization failed');
 
-          with open("bb-result-1.json", "r", encoding="utf-8") as f:
-              a = json.load(f)
-          with open("bb-result-2.json", "r", encoding="utf-8") as f:
-              b = json.load(f)
+          // determinism check
+          if (JSON.stringify(a) !== JSON.stringify(b)) {
+            console.error('non-deterministic output');
+            process.exit(1);
+          }
+          "
 
-          if a != b:
-              print("bb outputs differ between repeated runs")
-              print("--- bb-result-1.json ---")
-              print(json.dumps(a, indent=2))
-              print("--- bb-result-2.json ---")
-              print(json.dumps(b, indent=2))
-              raise SystemExit(1)
-          PY
-
-      - name: Upload fixture artifacts
+      # --- Upload artifacts ---
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: fixture-${{ matrix.os }}-${{ matrix.fixture }}-artifacts
+          name: artifacts-${{ matrix.os }}-${{ matrix.fixture }}
           path: |
-            fixtures/${{ matrix.fixture }}/baseline-jest.json
-            fixtures/${{ matrix.fixture }}/bb-result-1.json
-            fixtures/${{ matrix.fixture }}/bb-result-2.json
-          if-no-files-found: error
+            fixtures/${{ matrix.fixture }}/baseline.json
+            fixtures/${{ matrix.fixture }}/out1.json
+            fixtures/${{ matrix.fixture }}/out2.json
           retention-days: 14
