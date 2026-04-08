@@ -1,0 +1,10 @@
+{
+  "name": "jest-basic",
+  "private": true,
+  "scripts": {
+    "test": "jest --runInBand --ci"
+  },
+  "devDependencies": {
+    "jest": "^30.0.0"
+  }
+}
