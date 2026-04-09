@@ -5,7 +5,8 @@
   "description": "Minimal vulnerable project for Trivy adapter testing",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "test": "echo \"trivy-basic: no runtime tests (scan-only fixture)\""
   },
   "dependencies": {
     "lodash": "4.17.15"
