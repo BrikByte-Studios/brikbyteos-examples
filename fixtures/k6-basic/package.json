@@ -1,0 +1,9 @@
+{
+  "name": "k6-basic",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Deterministic k6 fixture for BrikByteOS Phase 0",
+  "scripts": {
+    "test": "echo \"k6-basic: no runtime tests (perf-only fixture)\""
+  }
+}

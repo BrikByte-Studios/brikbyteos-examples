@@ -40,6 +40,7 @@ jobs:
           playwright-basic, 
           playwright-ts-basic,
           trivy-basic,
+          k6-basic,
         ]
 
     steps:
@@ -94,6 +95,9 @@ jobs:
             trivy-basic)
               echo "FIXTURE_ADAPTER=trivy" >> "$GITHUB_ENV"
               ;;
+            k6-basic)
+              echo "FIXTURE_ADAPTER=k6" >> "$GITHUB_ENV"
+              ;;
             *)
               echo "FIXTURE_ADAPTER=jest" >> "$GITHUB_ENV"
               ;;
@@ -115,6 +119,28 @@ jobs:
           else
             npm install
           fi
+
+      - name: Install k6
+        if: matrix.fixture == 'k6-basic'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo gpg -k || true
+            sudo apt-get update
+            sudo apt-get install -y gnupg software-properties-common
+            curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+            sudo apt-get update
+            sudo apt-get install -y k6
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install k6
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            choco install k6
+          fi
+
+          k6 version
 
       - name: Install Trivy
         if: matrix.fixture == 'trivy-basic'
