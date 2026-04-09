@@ -117,7 +117,7 @@ jobs:
           test -f node_modules/.bin/jest || test -f node_modules/.bin/jest.cmd
 
       - name: Ensure Playwright binary
-        if: matrix.fixture == 'playwright-basic'
+        if: matrix.fixture == 'playwright-basic' || matrix.fixture == 'playwright-ts-basic'
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
         run: |
