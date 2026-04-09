@@ -1,0 +1,13 @@
+{
+  "name": "trivy-basic",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Minimal vulnerable project for Trivy adapter testing",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "lodash": "4.17.15"
+  }
+}
