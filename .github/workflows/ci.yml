@@ -204,6 +204,14 @@ jobs:
           npm test > baseline.out 2>&1 || (cat baseline.out && exit 1)
           cat baseline.out
 
+      - name: Debug k6 directly
+        if: matrix.fixture == 'k6-basic'
+        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          k6 run script.js
+
       - name: Run bb pass 1
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
