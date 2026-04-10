@@ -212,6 +212,17 @@ jobs:
           set -euo pipefail
           k6 run script.js
 
+      - name: Debug Trivy directly
+        if: matrix.fixture == 'trivy-basic'
+        working-directory: fixtures/${{ matrix.fixture }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy fs --format json --quiet . > trivy-direct.json
+          test -s trivy-direct.json
+          echo "--- trivy-direct.json ---"
+          cat trivy-direct.json
+
       - name: Run bb pass 1
         working-directory: fixtures/${{ matrix.fixture }}
         shell: bash
