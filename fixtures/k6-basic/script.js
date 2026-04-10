@@ -1,4 +1,4 @@
-import { sleep } from "k6";
+import { check, sleep } from "k6";
 
 export const options = {
   vus: 1,
@@ -10,5 +10,10 @@ export const options = {
 };
 
 export default function () {
+  const ok = true;
+  check({ ok }, {
+    "basic check passes": (v) => v.ok === true
+  });
+
   sleep(0.1);
 }
