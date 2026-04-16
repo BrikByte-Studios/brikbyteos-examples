@@ -1,1 +1,16 @@
 node_modules
+.tmp
+*.tar.gz
+.bb
+
+# -----------------------------------------------------------------------------
+# BrikByteOS Adapter Runtime Artifacts (NON-CANONICAL)
+# -----------------------------------------------------------------------------
+
+.bb-jest-report.json
+.bb-playwright-report.json
+.bb-k6-report.json
+.bb-trivy-report.json
+
+# Generic safety (future adapters)
+.bb-*-report.json
