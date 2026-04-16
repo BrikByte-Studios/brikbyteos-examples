@@ -1,0 +1,12 @@
+{
+  "name": "playwright-ui-release-readiness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realistic Playwright adapter example for BrikByteOS Phase 0",
+  "scripts": {
+    "test": "playwright test --config=./playwright.config.js --reporter=json > ./.bb-playwright-report.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1"
+  }
+}
