@@ -61,6 +61,10 @@ help:
 	@echo "  make bb-install-ci                  Install bb into ./.bin for CI/local scripts"
 	@echo "  make bb-verify                      Verify installed bb"
 	@echo "  make bb-uninstall                   Remove installed bb from BB_INSTALL_DIR"
+	@echo "  make bb-reinstall                  Reinstall the current BB_VERSION"
+	@echo "  make bb-upgrade TO_VERSION=...    Upgrade bb to a target version"
+	@echo "  make bb-downgrade TO_VERSION=...  Downgrade bb to a target version"
+	@echo "  make bb-switch TO_VERSION=...     Switch bb to any target version"
 	@echo
 	@echo "Examples"
 	@echo "  make jest-js-install                npm ci for JS Jest example"
@@ -223,3 +227,52 @@ install: bb-install
 
 .PHONY: verify
 verify: bb-verify
+
+# -----------------------------------------------------------------------------
+# Versioned install helpers
+# -----------------------------------------------------------------------------
+
+.PHONY: bb-reinstall
+bb-reinstall:
+	@echo "==> Reinstalling BrikByteOS CLI $(BB_VERSION) ($(BB_OS)/$(BB_ARCH))"
+	@$(MAKE) bb-uninstall BB_INSTALL_DIR="$(BB_INSTALL_DIR)" BB_BINARY_NAME="$(BB_BINARY_NAME)"
+	@$(MAKE) bb-install BB_VERSION="$(BB_VERSION)" BB_OS="$(BB_OS)" BB_ARCH="$(BB_ARCH)" BB_INSTALL_DIR="$(BB_INSTALL_DIR)"
+
+.PHONY: bb-upgrade
+bb-upgrade:
+	@if [ -z "$(TO_VERSION)" ]; then \
+		echo "error: TO_VERSION is required (example: make bb-upgrade TO_VERSION=v0.1.1)"; \
+		exit 1; \
+	fi
+	@echo "==> Upgrading BrikByteOS CLI from $(BB_VERSION) to $(TO_VERSION)"
+	@$(MAKE) bb-reinstall \
+		BB_VERSION="$(TO_VERSION)" \
+		BB_OS="$(BB_OS)" \
+		BB_ARCH="$(BB_ARCH)" \
+		BB_INSTALL_DIR="$(BB_INSTALL_DIR)"
+
+.PHONY: bb-downgrade
+bb-downgrade:
+	@if [ -z "$(TO_VERSION)" ]; then \
+		echo "error: TO_VERSION is required (example: make bb-downgrade TO_VERSION=v0.1.0)"; \
+		exit 1; \
+	fi
+	@echo "==> Downgrading BrikByteOS CLI from $(BB_VERSION) to $(TO_VERSION)"
+	@$(MAKE) bb-reinstall \
+		BB_VERSION="$(TO_VERSION)" \
+		BB_OS="$(BB_OS)" \
+		BB_ARCH="$(BB_ARCH)" \
+		BB_INSTALL_DIR="$(BB_INSTALL_DIR)"
+
+.PHONY: bb-switch
+bb-switch:
+	@if [ -z "$(TO_VERSION)" ]; then \
+		echo "error: TO_VERSION is required (example: make bb-switch TO_VERSION=v0.1.0)"; \
+		exit 1; \
+	fi
+	@echo "==> Switching BrikByteOS CLI to $(TO_VERSION)"
+	@$(MAKE) bb-reinstall \
+		BB_VERSION="$(TO_VERSION)" \
+		BB_OS="$(BB_OS)" \
+		BB_ARCH="$(BB_ARCH)" \
+		BB_INSTALL_DIR="$(BB_INSTALL_DIR)"

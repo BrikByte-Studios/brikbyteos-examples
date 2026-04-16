@@ -381,6 +381,80 @@ jobs:
             ${{ matrix.example.dir }}/.bb/
             ${{ matrix.example.dir }}/inspect.json
           if-no-files-found: warn
+  
+  phase0-k6-examples:
+    name: Phase 0 k6 example
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - repo-hygiene
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve bb version
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install k6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Download bb
+        run: |
+          set -euo pipefail
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          curl -fL -o bb.tar.gz https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz
+          tar -xzf bb.tar.gz
+          chmod +x bb
+          mkdir -p ~/.local/bin
+          mv bb ~/.local/bin/bb
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Start demo API
+        working-directory: examples/phase0/k6-api-release-readiness
+        run: |
+          npm ci
+          node server.js &
+          echo $! > server.pid
+
+      - name: Wait for API
+        run: |
+          sleep 3
+          curl -f http://127.0.0.1:3010/health
+
+      - name: Run bb k6
+        run: |
+          bb run --adapter k6 --workdir examples/phase0/k6-api-release-readiness
+
+      - name: Verify artifacts
+        working-directory: examples/phase0/k6-api-release-readiness
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1 | xargs basename)"
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -f "${RUN_DIR}/normalized/perf.json"
+
+      - name: Stop API
+        if: always()
+        run: |
+          kill $(cat examples/phase0/k6-api-release-readiness/server.pid) || true
 
   summary:
     name: CI summary

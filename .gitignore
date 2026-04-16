@@ -23,6 +23,8 @@ node_modules
 .bb/
 .bb-jest-report.json
 .bb-playwright-report.json
+.bb-k6-summary.json
+.bb-trivy-report.json
 inspect.json
 
 # node

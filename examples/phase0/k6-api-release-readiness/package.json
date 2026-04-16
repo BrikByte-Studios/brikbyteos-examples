@@ -1,0 +1,13 @@
+{
+  "name": "k6-api-release-readiness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realistic k6 adapter example for BrikByteOS Phase 0",
+  "scripts": {
+    "start": "node ./src/server.js",
+    "perf": "k6 run ./perf/smoke.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

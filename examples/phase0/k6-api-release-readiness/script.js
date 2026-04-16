@@ -1,0 +1,1 @@
+export { default, options } from './perf/smoke.js';
