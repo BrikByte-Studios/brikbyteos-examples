@@ -1,0 +1,242 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      bb_version:
+        description: "BrikByteOS CLI release version to validate against"
+        required: false
+        default: "v0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brikbyteos-examples-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_BB_VERSION: v0.1.0
+  EXAMPLE_JEST_DIR: examples/phase0/jest-release-readiness
+
+jobs:
+  repo-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required example paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d "${EXAMPLE_JEST_DIR}"
+          test -f "${EXAMPLE_JEST_DIR}/package.json"
+          test -f "${EXAMPLE_JEST_DIR}/package-lock.json"
+          test -f "${EXAMPLE_JEST_DIR}/jest.config.cjs"
+          test -d "${EXAMPLE_JEST_DIR}/src"
+          test -d "${EXAMPLE_JEST_DIR}/test"
+
+      - name: Reject committed local runtime artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden_patterns=(
+            ".bb/"
+            ".bb-jest-report.json"
+            ".tmp/"
+            "node_modules/"
+            "dist/"
+            "bin/"
+          )
+
+          while IFS= read -r -d '' file; do
+            for pattern in "${forbidden_patterns[@]}"; do
+              if [[ "${file}" == *"${pattern}"* ]]; then
+                echo "error: forbidden generated/runtime artifact tracked in repo: ${file}"
+                exit 1
+              fi
+            done
+          done < <(git ls-files -z)
+
+      - name: Validate README presence for example
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "${EXAMPLE_JEST_DIR}/README.md"
+
+  phase0-jest-example:
+    name: Phase 0 Jest example
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - repo-hygiene
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve bb version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using bb version: ${BB_VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            examples/phase0/jest-release-readiness/package-lock.json
+
+      - name: Download released bb binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify bb installation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          which bb
+          bb version
+          bb --help > /dev/null
+
+      - name: Install example dependencies
+        working-directory: examples/phase0/jest-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Validate direct Jest execution
+        working-directory: examples/phase0/jest-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Run bb with relative workdir from repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bb run --adapter jest --workdir "${EXAMPLE_JEST_DIR}"
+
+      - name: Run bb with local workdir from example root
+        working-directory: examples/phase0/jest-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bb run --adapter jest --workdir .
+
+      - name: Verify canonical artifacts exist
+        working-directory: examples/phase0/jest-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+          if [[ -z "${LATEST_RUN_ID}" ]]; then
+            echo "error: no run directories found under ${RUN_ROOT}"
+            exit 1
+          fi
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -d "${RUN_DIR}/raw"
+          test -d "${RUN_DIR}/normalized"
+          test -d "${RUN_DIR}/logs"
+          test -f "${RUN_DIR}/normalized/unit.json"
+
+          echo "Latest run directory: ${RUN_DIR}"
+
+      - name: Inspect latest run
+        working-directory: examples/phase0/jest-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_RUN_ID="$(find .bb/runs -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+
+          bb inspect --run-id "${LATEST_RUN_ID}" --workdir . --json > inspect.json
+          test -s inspect.json
+          cat inspect.json
+
+      - name: Upload generated artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-jest-example-artifacts
+          path: |
+            examples/phase0/jest-release-readiness/.bb/
+            examples/phase0/jest-release-readiness/inspect.json
+          if-no-files-found: warn
+
+  summary:
+    name: CI summary
+    runs-on: ubuntu-latest
+    needs:
+      - repo-hygiene
+      - phase0-jest-example
+    if: always()
+
+    steps:
+      - name: Report job outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "repo-hygiene result: ${{ needs.repo-hygiene.result }}"
+          echo "phase0-jest-example result: ${{ needs.phase0-jest-example.result }}"
+
+          if [[ "${{ needs.repo-hygiene.result }}" != "success" || "${{ needs.phase0-jest-example.result }}" != "success" ]]; then
+            echo "error: one or more CI jobs failed"
+            exit 1
+          fi
+
+          echo "All CI checks passed."
