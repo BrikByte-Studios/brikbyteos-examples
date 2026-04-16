@@ -1,0 +1,4 @@
+# Example ignore file for bounded demo usage.
+# Keep this minimal so the demo remains truthful.
+
+# Ignore demo-only low-signal noise if needed in future.

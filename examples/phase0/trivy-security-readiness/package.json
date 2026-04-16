@@ -1,0 +1,13 @@
+{
+  "name": "trivy-security-readiness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realistic Trivy adapter example for BrikByteOS Phase 0",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

@@ -555,6 +555,682 @@ jobs:
             examples/phase0/k6-api-release-readiness/server.log
           if-no-files-found: warn
 
+  name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feat/**"
+      - "fix/**"
+      - "chore/**"
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      bb_version:
+        description: "BrikByteOS CLI release version to validate against"
+        required: false
+        default: "v0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brikbyteos-examples-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEFAULT_BB_VERSION: v0.1.0
+
+jobs:
+  repo-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Reject committed local runtime artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden_patterns=(
+            ".bb/"
+            ".bb-jest-report.json"
+            ".bb-playwright-report.json"
+            ".tmp/"
+            "node_modules/"
+            "dist/"
+            "bin/"
+          )
+
+          while IFS= read -r -d '' file; do
+            for pattern in "${forbidden_patterns[@]}"; do
+              if [[ "${file}" == *"${pattern}"* ]]; then
+                echo "error: forbidden generated/runtime artifact tracked in repo: ${file}"
+                exit 1
+              fi
+            done
+          done < <(git ls-files -z)
+
+  phase0-jest-examples:
+    name: Phase 0 Jest examples (${{ matrix.example.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - repo-hygiene
+
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - name: jest-js
+            dir: examples/phase0/jest-release-readiness
+            config: jest.config.cjs
+          - name: jest-ts
+            dir: examples/phase0/jest-ts-release-readiness
+            config: jest.config.cjs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required example paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d "${{ matrix.example.dir }}"
+          test -f "${{ matrix.example.dir }}/package.json"
+          test -f "${{ matrix.example.dir }}/package-lock.json"
+          test -f "${{ matrix.example.dir }}/${{ matrix.example.config }}"
+          test -d "${{ matrix.example.dir }}/src"
+          test -d "${{ matrix.example.dir }}/test"
+          test -f "${{ matrix.example.dir }}/README.md"
+
+      - name: Resolve bb version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using bb version: ${BB_VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            ${{ matrix.example.dir }}/package-lock.json
+
+      - name: Download released bb binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify bb installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          which bb
+          bb version
+          bb --help > /dev/null
+
+      - name: Install example dependencies
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Validate direct Jest execution
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Run bb with relative workdir from repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter jest --workdir "${{ matrix.example.dir }}"
+
+      - name: Run bb with local workdir from example root
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter jest --workdir .
+
+      - name: Verify canonical artifacts exist
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+          if [[ -z "${LATEST_RUN_ID}" ]]; then
+            echo "error: no run directories found under ${RUN_ROOT}"
+            exit 1
+          fi
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -d "${RUN_DIR}/raw"
+          test -d "${RUN_DIR}/normalized"
+          test -d "${RUN_DIR}/logs"
+          test -f "${RUN_DIR}/normalized/unit.json"
+
+          echo "Latest run directory: ${RUN_DIR}"
+
+      - name: Inspect latest run
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_RUN_ID="$(find .bb/runs -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+
+          bb inspect --run-id "${LATEST_RUN_ID}" --workdir . --json > inspect.json
+          test -s inspect.json
+
+      - name: Upload generated artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-${{ matrix.example.name }}-artifacts
+          path: |
+            ${{ matrix.example.dir }}/.bb/
+            ${{ matrix.example.dir }}/inspect.json
+          if-no-files-found: warn
+
+  phase0-playwright-examples:
+    name: Phase 0 Playwright examples (${{ matrix.example.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - repo-hygiene
+
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - name: playwright-js
+            dir: examples/phase0/playwright-ui-release-readiness
+            config: playwright.config.js
+          - name: playwright-ts
+            dir: examples/phase0/playwright-ts-release-readiness
+            config: playwright.config.ts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required example paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d "${{ matrix.example.dir }}"
+          test -f "${{ matrix.example.dir }}/package.json"
+          test -f "${{ matrix.example.dir }}/package-lock.json"
+          test -f "${{ matrix.example.dir }}/${{ matrix.example.config }}"
+          test -d "${{ matrix.example.dir }}/pages"
+          test -d "${{ matrix.example.dir }}/tests"
+          test -f "${{ matrix.example.dir }}/README.md"
+
+      - name: Resolve bb version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using bb version: ${BB_VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            ${{ matrix.example.dir }}/package-lock.json
+
+      - name: Download released bb binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify bb installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          which bb
+          bb version
+          bb --help > /dev/null
+
+      - name: Install example dependencies
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install Playwright browser
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps chromium
+
+      - name: Validate direct Playwright execution
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Run bb with relative workdir from repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter playwright --workdir "${{ matrix.example.dir }}"
+
+      - name: Run bb with local workdir from example root
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter playwright --workdir .
+
+      - name: Verify canonical artifacts exist
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+          if [[ -z "${LATEST_RUN_ID}" ]]; then
+            echo "error: no run directories found under ${RUN_ROOT}"
+            exit 1
+          fi
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -d "${RUN_DIR}/raw"
+          test -d "${RUN_DIR}/normalized"
+          test -d "${RUN_DIR}/logs"
+          test -f "${RUN_DIR}/normalized/ui.json"
+
+          echo "Latest run directory: ${RUN_DIR}"
+
+      - name: Inspect latest run
+        working-directory: ${{ matrix.example.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_RUN_ID="$(find .bb/runs -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+
+          bb inspect --run-id "${LATEST_RUN_ID}" --workdir . --json > inspect.json
+          test -s inspect.json
+
+      - name: Upload generated artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-${{ matrix.example.name }}-artifacts
+          path: |
+            ${{ matrix.example.dir }}/.bb/
+            ${{ matrix.example.dir }}/inspect.json
+          if-no-files-found: warn
+  
+  phase0-k6-examples:
+    name: Phase 0 k6 example
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - repo-hygiene
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve bb version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using bb version: ${BB_VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            examples/phase0/k6-api-release-readiness/package-lock.json
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '0.49.0'
+
+      - name: Download released bb binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify bb installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          which bb
+          bb version
+          bb --help > /dev/null
+
+      - name: Validate required example paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "examples/phase0/k6-api-release-readiness"
+          test -f "examples/phase0/k6-api-release-readiness/package.json"
+          test -f "examples/phase0/k6-api-release-readiness/package-lock.json"
+          test -f "examples/phase0/k6-api-release-readiness/README.md"
+          test -f "examples/phase0/k6-api-release-readiness/script.js"
+
+      - name: Install example dependencies
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Start local demo API
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          node src/server.js > server.log 2>&1 &
+          echo $! > server.pid
+
+      - name: Wait for API readiness
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3010/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "error: API did not become ready in time"
+          exit 1
+
+      - name: Validate direct k6 execution
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run perf
+
+      - name: Run bb with relative workdir from repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter k6 --workdir examples/phase0/k6-api-release-readiness
+
+      - name: Run bb with local workdir from example root
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter k6 --workdir .
+
+      - name: Verify canonical artifacts exist
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+          test -n "${LATEST_RUN_ID}"
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -d "${RUN_DIR}/raw"
+          test -d "${RUN_DIR}/normalized"
+          test -d "${RUN_DIR}/logs"
+          test -f "${RUN_DIR}/normalized/perf.json"
+
+      - name: Inspect latest run
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          LATEST_RUN_ID="$(find .bb/runs -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+          bb inspect --run-id "${LATEST_RUN_ID}" --workdir . --json > inspect.json
+          test -s inspect.json
+
+      - name: Stop local demo API
+        if: always()
+        working-directory: examples/phase0/k6-api-release-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f server.pid ]]; then
+            kill "$(cat server.pid)" || true
+          fi
+
+      - name: Upload generated artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-k6-artifacts
+          path: |
+            examples/phase0/k6-api-release-readiness/.bb/
+            examples/phase0/k6-api-release-readiness/inspect.json
+            examples/phase0/k6-api-release-readiness/server.log
+          if-no-files-found: warn
+
+  phase0-trivy-examples:
+    name: Phase 0 Trivy example
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - repo-hygiene
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve bb version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      # 🔥 Install Trivy (correct way)
+      - name: Install Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | \
+            sudo sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Download released bb binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Verify bb installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          which bb
+          bb version
+
+      - name: Validate example exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d examples/phase0/trivy-security-readiness
+          test -f examples/phase0/trivy-security-readiness/package.json
+          test -f examples/phase0/trivy-security-readiness/README.md
+
+      - name: Install example dependencies
+        working-directory: examples/phase0/trivy-security-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Validate direct Trivy execution
+        working-directory: examples/phase0/trivy-security-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy fs --format json --quiet . > /dev/null
+
+      - name: Run bb from repo root
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter trivy --workdir examples/phase0/trivy-security-readiness
+
+      - name: Run bb from local directory
+        working-directory: examples/phase0/trivy-security-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          bb run --adapter trivy --workdir .
+
+      - name: Verify artifacts
+        working-directory: examples/phase0/trivy-security-readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_ROOT=".bb/runs"
+          test -d "${RUN_ROOT}"
+
+          LATEST_RUN_ID="$(find "${RUN_ROOT}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
+
+          RUN_DIR="${RUN_ROOT}/${LATEST_RUN_ID}"
+
+          test -f "${RUN_DIR}/manifest.json"
+          test -d "${RUN_DIR}/raw"
+          test -d "${RUN_DIR}/normalized"
+          test -f "${RUN_DIR}/normalized/security.json"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-trivy-artifacts
+          path: |
+            examples/phase0/trivy-security-readiness/.bb/
+
   summary:
     name: CI summary
     runs-on: ubuntu-latest
@@ -562,6 +1238,8 @@ jobs:
       - repo-hygiene
       - phase0-jest-examples
       - phase0-playwright-examples
+      - phase0-k6-examples
+      - phase0-trivy-examples
     if: always()
 
     steps:
@@ -573,10 +1251,14 @@ jobs:
           echo "repo-hygiene result: ${{ needs.repo-hygiene.result }}"
           echo "phase0-jest-examples result: ${{ needs.phase0-jest-examples.result }}"
           echo "phase0-playwright-examples result: ${{ needs.phase0-playwright-examples.result }}"
+          echo "phase0-k6-examples result: ${{ needs.phase0-k6-examples.result }}"
+          echo "phase0-trivy-examples result: ${{ needs.phase0-trivy-examples.result }}"
 
           if [[ "${{ needs.repo-hygiene.result }}" != "success" || \
                 "${{ needs.phase0-jest-examples.result }}" != "success" || \
-                "${{ needs.phase0-playwright-examples.result }}" != "success" ]]; then
+                "${{ needs.phase0-playwright-examples.result }}" != "success" || \
+                "${{ needs.phase0-k6-examples.result }}" != "success" || \
+                "${{ needs.phase0-trivy-examples.result }}" != "success" ]]; then
             echo "error: one or more CI jobs failed"
             exit 1
           fi
