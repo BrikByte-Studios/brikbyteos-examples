@@ -1,0 +1,14 @@
+{
+  "name": "playwright-ts-release-readiness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realistic Playwright TypeScript adapter example for BrikByteOS Phase 0",
+  "scripts": {
+    "test": "playwright test --config=./playwright.config.ts --reporter=json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@types/node": "^25.6.0",
+    "typescript": "^5.4.0"
+  }
+}

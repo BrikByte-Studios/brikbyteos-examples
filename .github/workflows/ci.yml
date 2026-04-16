@@ -233,6 +233,9 @@ jobs:
           - name: playwright-js
             dir: examples/phase0/playwright-ui-release-readiness
             config: playwright.config.js
+          - name: playwright-ts
+            dir: examples/phase0/playwright-ts-release-readiness
+            config: playwright.config.ts
 
     steps:
       - name: Checkout repository

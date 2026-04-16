@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>BrikByte TS Demo App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      nav a {
+        margin-right: 1rem;
+      }
+      .hero {
+        margin-top: 2rem;
+      }
+      .cta {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid #222;
+        text-decoration: none;
+        color: #111;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Primary">
+        <a href="#overview" id="nav-overview">Overview</a>
+        <a href="#signals" id="nav-signals">Signals</a>
+        <a href="#release" id="nav-release">Release</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" id="overview">
+        <h1>Release Readiness Dashboard</h1>
+        <p id="tagline">
+          Deterministic release evidence for safer delivery.
+        </p>
+        <a href="#release" class="cta" id="start-review">
+          Start Review
+        </a>
+      </section>
+
+      <section id="signals">
+        <h2>Evidence Signals</h2>
+        <ul>
+          <li>Unit</li>
+          <li>UI</li>
+          <li>Performance</li>
+          <li>Security</li>
+        </ul>
+      </section>
+
+      <section id="release">
+        <h2>Release Decision</h2>
+        <p id="release-status">Status: Ready for review</p>
+      </section>
+    </main>
+  </body>
+</html>
