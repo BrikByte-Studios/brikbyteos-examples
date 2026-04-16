@@ -14,3 +14,17 @@ node_modules
 
 # Generic safety (future adapters)
 .bb-*-report.json
+
+# local install/temp
+.bin/
+.tmp/
+
+# runtime artifacts
+.bb/
+.bb-jest-report.json
+.bb-playwright-report.json
+inspect.json
+
+# node
+node_modules/
+dist/
