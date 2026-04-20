@@ -695,10 +695,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Resolve bb version
+        id: version
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.bb_version }}" ]]; then
+            BB_VERSION="${{ github.event.inputs.bb_version }}"
+          else
+            BB_VERSION="${DEFAULT_BB_VERSION}"
+          fi
+
+          echo "bb_version=${BB_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Using bb version: ${BB_VERSION}"
+
+      - name: Download released bb binary
+        run: |
+          set -euo pipefail
+
+          BB_VERSION="${{ steps.version.outputs.bb_version }}"
+          ASSET_URL="https://github.com/BrikByte-Studios/brikbyteos-cli/releases/download/${BB_VERSION}/bb_linux_amd64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o bb_linux_amd64.tar.gz "${ASSET_URL}"
+          tar -xzf bb_linux_amd64.tar.gz
+          chmod +x bb
+
+          mkdir -p "${HOME}/.local/bin"
+          mv bb "${HOME}/.local/bin/bb"
+
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Build bb
+        run: |
+          go build -o ./bin/bb ./cmd/bb
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
