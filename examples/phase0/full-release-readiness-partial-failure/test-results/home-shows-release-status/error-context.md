@@ -22,7 +22,7 @@ Timeout:  5000ms
 Call log:
   - Expect "toHaveText" with timeout 5000ms
   - waiting for locator('#status')
-    8 × locator resolved to <p id="status">healthy</p>
+    9 × locator resolved to <p id="status">healthy</p>
       - unexpected value "healthy"
 
 ```
