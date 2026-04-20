@@ -725,10 +725,6 @@ jobs:
 
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-      - name: Build bb
-        run: |
-          go build -o ./bin/bb ./cmd/bb
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -740,18 +736,20 @@ jobs:
       - name: Validate required example paths exist
         run: |
           set -euo pipefail
-          test -d "$EXAMPLE_DIR"
-          test -f "$EXAMPLE_DIR/package.json"
-          test -f "$EXAMPLE_DIR/package-lock.json"
-          test -f "$EXAMPLE_DIR/README.md"
+          [[ -d "$EXAMPLE_DIR" ]] || { echo "missing directory: $EXAMPLE_DIR"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/package.json" ]] || { echo "missing file: $EXAMPLE_DIR/package.json"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/package-lock.json" ]] || { echo "missing file: $EXAMPLE_DIR/package-lock.json"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/README.md" ]] || { echo "missing file: $EXAMPLE_DIR/README.md"; exit 1; }
 
       - name: Install example dependencies
         run: |
+          set -euo pipefail
           cd "$EXAMPLE_DIR"
           npm ci
 
       - name: Install Playwright Chromium
         run: |
+          set -euo pipefail
           cd "$EXAMPLE_DIR"
           npx playwright install --with-deps chromium
 
@@ -778,15 +776,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
-      - name: Build bb
-        run: |
-          set -euo pipefail
-          go build -o ./bin/bb ./cmd/bb
-
       - name: Verify toolchain
         run: |
           set -euo pipefail
-          ./bin/bb version
+          which bb
+          bb version
           node --version
           npm --version
           k6 version
@@ -796,7 +790,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./bin/bb run --all --workdir "$EXAMPLE_DIR"
+          bb run --all --workdir "$EXAMPLE_DIR"
 
           RUN_ID="$(find "$EXAMPLE_DIR/.bb/runs" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1)"
           if [[ -z "${RUN_ID}" ]]; then
@@ -809,11 +803,11 @@ jobs:
           echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
           echo "MANIFEST_PATH=$MANIFEST_PATH" >> "$GITHUB_ENV"
 
-          ./bin/bb score --manifest "$MANIFEST_PATH"
-          ./bin/bb gate --manifest "$MANIFEST_PATH" --policy production
-          ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID"
-          ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --html
-          ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --ui
+          bb score --manifest "$MANIFEST_PATH"
+          bb gate --manifest "$MANIFEST_PATH" --policy production
+          bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID"
+          bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --html
+          bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --ui
 
       - name: Assert expected artifacts exist
         run: |
