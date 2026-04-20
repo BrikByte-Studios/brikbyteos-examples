@@ -713,10 +713,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -d "$EXAMPLE_DIR"
-          test -f "$EXAMPLE_DIR/package.json"
-          test -f "$EXAMPLE_DIR/package-lock.json"
-          test -f "$EXAMPLE_DIR/README.md"
+          echo "Checking example directory: $EXAMPLE_DIR"
+
+          [[ -d "$EXAMPLE_DIR" ]] || { echo "missing directory: $EXAMPLE_DIR"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/package.json" ]] || { echo "missing file: $EXAMPLE_DIR/package.json"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/package-lock.json" ]] || { echo "missing file: $EXAMPLE_DIR/package-lock.json"; exit 1; }
+          [[ -f "$EXAMPLE_DIR/README.md" ]] || { echo "missing file: $EXAMPLE_DIR/README.md"; exit 1; }
+          [[ -d "$EXAMPLE_DIR/src" ]] || { echo "missing directory: $EXAMPLE_DIR/src"; exit 1; }
+          [[ -d "$EXAMPLE_DIR/tests" ]] || { echo "missing directory: $EXAMPLE_DIR/tests"; exit 1; }
+
+          echo "Example path validation passed."
 
       - name: Set up Go
         uses: actions/setup-go@v5
