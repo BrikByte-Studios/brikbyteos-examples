@@ -677,23 +677,46 @@ jobs:
             examples/phase0/trivy-security-readiness/.bb/
           if-no-files-found: warn
 
-  phase0-full-example:
-    name: Phase 0 full example end-to-end
+  phase0-full-examples:
+    name: Phase 0 full example (${{ matrix.scenario.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs:
       - repo-hygiene
+
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - name: full-success
+            example_dir: examples/phase0/full-release-readiness
+            expected_gate_exit: 0
+          - name: partial-failure
+            example_dir: examples/phase0/full-release-readiness-partial-failure
+            expected_gate_exit: 1
+          - name: complete-failure
+            example_dir: examples/phase0/full-release-readiness-complete-failure
+            expected_gate_exit: 1
 
     defaults:
       run:
         shell: bash
 
     env:
-      EXAMPLE_DIR: examples/phase0/full-release-readiness
+      EXAMPLE_DIR: ${{ matrix.scenario.example_dir }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate required example paths exist
+        run: |
+          set -euo pipefail
+
+          test -d "$EXAMPLE_DIR"
+          test -f "$EXAMPLE_DIR/package.json"
+          test -f "$EXAMPLE_DIR/package-lock.json"
+          test -f "$EXAMPLE_DIR/README.md"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -706,23 +729,17 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: |
-            examples/phase0/full-release-readiness/package-lock.json
-
-      - name: Validate required example paths exist
-        run: |
-          set -euo pipefail
-          test -d "$EXAMPLE_DIR"
-          test -f "$EXAMPLE_DIR/package.json"
-          test -f "$EXAMPLE_DIR/package-lock.json"
-          test -f "$EXAMPLE_DIR/README.md"
+            ${{ matrix.scenario.example_dir }}/package-lock.json
 
       - name: Install example dependencies
         run: |
+          set -euo pipefail
           cd "$EXAMPLE_DIR"
           npm ci
 
       - name: Install Playwright Chromium
         run: |
+          set -euo pipefail
           cd "$EXAMPLE_DIR"
           npx playwright install --with-deps chromium
 
@@ -781,7 +798,27 @@ jobs:
           echo "MANIFEST_PATH=$MANIFEST_PATH" >> "$GITHUB_ENV"
 
           ./bin/bb score --manifest "$MANIFEST_PATH"
+
+      - name: Evaluate gate outcome
+        run: |
+          set -euo pipefail
+
+          set +e
           ./bin/bb gate --manifest "$MANIFEST_PATH" --policy production
+          GATE_EXIT=$?
+          set -e
+
+          echo "Observed gate exit code: ${GATE_EXIT}"
+          echo "Expected gate exit code: ${{ matrix.scenario.expected_gate_exit }}"
+
+          if [[ "${GATE_EXIT}" -ne "${{ matrix.scenario.expected_gate_exit }}" ]]; then
+            echo "error: unexpected gate result for scenario ${{ matrix.scenario.name }}"
+            exit 1
+          fi
+
+      - name: Generate inspect outputs
+        run: |
+          set -euo pipefail
           ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID"
           ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --html
           ./bin/bb inspect --workdir "$EXAMPLE_DIR" --run-id "$RUN_ID" --ui
@@ -804,9 +841,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase0-full-release-readiness-${{ env.RUN_ID }}
+          name: phase0-${{ matrix.scenario.name }}-${{ env.RUN_ID }}
           path: |
-            ${{ env.EXAMPLE_DIR }}/.bb/runs/${{ env.RUN_ID }}
+            ${{ matrix.scenario.example_dir }}/.bb/runs/${{ env.RUN_ID }}
           if-no-files-found: warn
 
   summary:
@@ -818,7 +855,7 @@ jobs:
       - phase0-playwright-examples
       - phase0-k6-examples
       - phase0-trivy-examples
-      - phase0-full-example
+      - phase0-full-examples
     if: always()
 
     steps:
@@ -832,14 +869,14 @@ jobs:
           echo "phase0-playwright-examples result: ${{ needs.phase0-playwright-examples.result }}"
           echo "phase0-k6-examples result: ${{ needs.phase0-k6-examples.result }}"
           echo "phase0-trivy-examples result: ${{ needs.phase0-trivy-examples.result }}"
-          echo "phase0-full-example result: ${{ needs.phase0-full-example.result }}"
+          echo "phase0-full-examples result: ${{ needs.phase0-full-examples.result }}"
 
           if [[ "${{ needs.repo-hygiene.result }}" != "success" || \
                 "${{ needs.phase0-jest-examples.result }}" != "success" || \
                 "${{ needs.phase0-playwright-examples.result }}" != "success" || \
                 "${{ needs.phase0-k6-examples.result }}" != "success" || \
                 "${{ needs.phase0-trivy-examples.result }}" != "success" || \
-                "${{ needs.phase0-full-example.result }}" != "success" ]]; then
+                "${{ needs.phase0-full-examples.result }}" != "success" ]]; then
             echo "error: one or more CI jobs failed"
             exit 1
           fi
